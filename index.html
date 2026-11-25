@@ -72,7 +72,7 @@ video{width:100%;border-radius:16px;margin:8px 0;background:#000}
 
 <script>
 const enc=new TextEncoder(),dec=new TextDecoder(),KEY='ish-auth-vault-v1';
-let pass=null,accounts=[],idle=null,stream=null,scanTimer=null,pendingAcc=null;
+let pass=null,accounts=[],idle=null,stream=null,scanTimer=null,pendingAcc=null,jsqrP=null;
 const $=id=>document.getElementById(id);
 const canQR='BarcodeDetector' in window;
 const b64=b=>btoa(String.fromCharCode(...new Uint8Array(b)));
@@ -119,15 +119,20 @@ async function fromText(t){try{await addAcc(parseUri(t))}catch(e){msg(e.message)
 $('pyes').onclick=async()=>{const a=pendingAcc;pendingAcc=null;showPending();if(!a)return;if(accounts.some(x=>x.secret===a.secret)){msg('Already added.');return}await addAcc(a)};
 $('pno').onclick=()=>{pendingAcc=null;showPending()};
 $('addUri').onclick=async()=>{await fromText($('uri').value);$('uri').value=''};
-$('scan').onclick=async()=>{if(!canQR){msg('This browser cannot scan QR codes. Paste the setup link or key instead.');return}
+function loadJsQR(){if(window.jsQR)return Promise.resolve();if(!jsqrP)jsqrP=new Promise((res,rej)=>{const s=document.createElement('script');s.src='jsQR.js';s.onload=()=>window.jsQR?res():rej(new Error('x'));s.onerror=()=>{jsqrP=null;rej(new Error('x'))};document.head.append(s)});return jsqrP}
+async function makeReader(){if(canQR){const d=new BarcodeDetector({formats:['qr_code']});return async src=>{const r=await d.detect(src);return r.length?r[0].rawValue:null}}
+await loadJsQR();const c=document.createElement('canvas'),x=c.getContext('2d',{willReadFrequently:true});
+return async src=>{const w=src.videoWidth||src.width,h=src.videoHeight||src.height;if(!w||!h)return null;const k=Math.min(1,1280/Math.max(w,h)),cw=Math.round(w*k),ch=Math.round(h*k);c.width=cw;c.height=ch;x.drawImage(src,0,0,cw,ch);const id=x.getImageData(0,0,cw,ch);const r=jsQR(id.data,cw,ch);return r?r.data:null}}
+$('scan').onclick=async()=>{let rd;try{rd=await makeReader()}catch(e){msg('QR reader unavailable here. Paste the setup link or key instead.');return}
 try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});const v=$('cam');v.srcObject=stream;v.classList.remove('hide');$('stopScan').classList.remove('hide');await v.play();
-const det=new BarcodeDetector({formats:['qr_code']});let busy=false;
-scanTimer=setInterval(async()=>{if(busy)return;busy=true;try{const r=await det.detect(v);if(r.length&&r[0].rawValue.startsWith('otpauth://')){const t=r[0].rawValue;stopScan();await fromText(t)}}catch(e){}busy=false},400)}
+let busy=false;
+scanTimer=setInterval(async()=>{if(busy)return;busy=true;try{const t=await rd(v);if(t&&t.startsWith('otpauth://')){stopScan();await fromText(t)}}catch(e){}busy=false},350)}
 catch(e){stopScan();msg('Camera unavailable. Allow camera access, or paste the setup link.')}};
 $('stopScan').onclick=stopScan;
-$('pick').onclick=()=>{if(!canQR){msg('This browser cannot read QR images. Paste the setup link or key instead.');return}$('qrfile').click()};
+$('pick').onclick=()=>$('qrfile').click();
 $('qrfile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
-try{const bmp=await createImageBitmap(f);const r=await new BarcodeDetector({formats:['qr_code']}).detect(bmp);if(!r.length){msg('No QR code found in that image.');return}await fromText(r[0].rawValue)}
+let rd;try{rd=await makeReader()}catch(err){msg('QR reader unavailable here. Paste the setup link or key instead.');return}
+try{const bmp=await createImageBitmap(f);const t=await rd(bmp);if(!t){msg('No QR code found in that image.');return}await fromText(t)}
 catch(err){msg('Could not read that image.')}};
 $('addManual').onclick=async()=>{const s=$('mkey').value;if(b32(s).length<10){msg('That key looks too short.');return}
 await addAcc({name:$('mname').value||'Account',secret:s,issuer:'',digits:6,period:30,algorithm:'SHA1'});$('mkey').value='';$('mname').value='';};
