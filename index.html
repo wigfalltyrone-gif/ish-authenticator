@@ -48,6 +48,9 @@ video{width:100%;border-radius:16px;margin:8px 0;background:#000}
 <div id="pending" class="card hide"><div class="name">An account is ready to add</div><div id="pname" class="pname"></div>
 <p class="note">Only add this if you just started setup in Essynce Teams.</p>
 <button id="pyes" class="p">Add to authenticator</button><button id="pno">Not now</button></div>
+<div id="bkremind" class="card hide"><div class="name">Protect your codes</div>
+<p class="note">If you lose this device or forget your passphrase, your codes cannot be recovered. Save an encrypted backup now and keep it somewhere safe.</p>
+<button id="bkNow" class="p">Create backup now</button></div>
 <div id="list"></div>
 <details class="card" id="addbox"><summary>Add account</summary>
 <button id="scan" class="p">Scan QR code</button>
@@ -61,17 +64,19 @@ video{width:100%;border-radius:16px;margin:8px 0;background:#000}
 <input id="mname" placeholder="Name (for manual key)" autocomplete="off">
 <input id="mkey" placeholder="Setup key" autocomplete="off">
 <button id="addManual">Add with key</button></details>
-<details class="card"><summary>Backup and restore</summary>
+<details class="card" id="bkbox"><summary>Backup and restore</summary>
 <button id="exp">Create encrypted backup</button>
 <textarea id="bk" rows="3" placeholder="Backup text appears here, or paste one to restore"></textarea>
+<button id="bkDl">Download backup file</button>
+<button id="bkCopy">Copy backup text</button>
 <button id="imp">Restore from backup</button>
-<p class="note">A backup is protected by the passphrase used when it was made.</p></details>
+<p class="note">A backup is protected by the passphrase used when it was made. Keep the backup and the passphrase in different places.</p></details>
 <div class="row"><span id="msg"></span><button id="lockNow" class="l">Lock now</button></div>
 </section>
 <p class="credit">Background photo: <a href="https://www.pexels.com/photo/17839895/" target="_blank" rel="noopener noreferrer">Pexels</a> (Pexels License)</p>
 
 <script>
-const enc=new TextEncoder(),dec=new TextDecoder(),KEY='ish-auth-vault-v1';
+const enc=new TextEncoder(),dec=new TextDecoder(),KEY='ish-auth-vault-v1',BK='ish-auth-backup-v1';
 let pass=null,accounts=[],idle=null,stream=null,scanTimer=null,pendingAcc=null,jsqrP=null;
 const $=id=>document.getElementById(id);
 const canQR='BarcodeDetector' in window;
@@ -85,6 +90,9 @@ return JSON.stringify({v:1,s:b64(salt),i:b64(iv),c:b64(ct)});}
 async function open(p,txt){const o=JSON.parse(txt);const k=await deriveKey(p,unb64(o.s));
 const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(o.i)},k,unb64(o.c));return JSON.parse(dec.decode(pt));}
 const save=async()=>localStorage.setItem(KEY,await seal(pass,accounts));
+function backedCount(){try{const o=JSON.parse(localStorage.getItem(BK)||'{}');return typeof o.n==='number'?o.n:-1}catch(e){return -1}}
+function markBackup(){try{localStorage.setItem(BK,JSON.stringify({n:accounts.length,t:Date.now()}))}catch(e){}remind()}
+function remind(){$('bkremind').classList.toggle('hide',!(pass&&accounts.length&&backedCount()!==accounts.length))}
 function b32(s){const A='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';s=s.toUpperCase().replace(/[^A-Z2-7]/g,'');let bits='',out=[];
 for(const c of s)bits+=A.indexOf(c).toString(2).padStart(5,'0');
 for(let i=0;i+8<=bits.length;i+=8)out.push(parseInt(bits.slice(i,i+8),2));return new Uint8Array(out);}
@@ -104,7 +112,7 @@ function msg(t){$('msg').textContent=t;setTimeout(()=>{if($('msg').textContent==
 function touch(){clearTimeout(idle);idle=setTimeout(lockNow,300000)}
 ['click','keydown','touchstart'].forEach(e=>document.addEventListener(e,()=>{if(pass)touch()}));
 function stopScan(){clearInterval(scanTimer);if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}const v=$('cam');v.srcObject=null;v.classList.add('hide');$('stopScan').classList.add('hide')}
-function lockNow(){stopScan();pendingAcc=null;pass=null;accounts=[];$('app').classList.add('hide');$('pending').classList.add('hide');$('lock').classList.remove('hide');['pass','pass2','bk'].forEach(i=>$(i).value='');$('list').replaceChildren();init();}
+function lockNow(){stopScan();pendingAcc=null;pass=null;accounts=[];$('app').classList.add('hide');$('pending').classList.add('hide');$('bkremind').classList.add('hide');$('lock').classList.remove('hide');['pass','pass2','bk'].forEach(i=>$(i).value='');$('list').replaceChildren();init();}
 function init(){const has=!!localStorage.getItem(KEY);$('pass2').classList.toggle('hide',has);
 $('lockmsg').textContent=(has?'Enter your passphrase to unlock.':'Create a passphrase to protect your codes. If you forget it, it cannot be recovered.')+(pendingAcc?' An account from Essynce Teams is waiting to be added.':'');
 $('unlock').textContent=has?'Unlock':'Create vault';}
@@ -136,12 +144,16 @@ try{const bmp=await createImageBitmap(f);const t=await rd(bmp);if(!t){msg('No QR
 catch(err){msg('Could not read that image.')}};
 $('addManual').onclick=async()=>{const s=$('mkey').value;if(b32(s).length<10){msg('That key looks too short.');return}
 await addAcc({name:$('mname').value||'Account',secret:s,issuer:'',digits:6,period:30,algorithm:'SHA1'});$('mkey').value='';$('mname').value='';};
-$('exp').onclick=async()=>{$('bk').value=await seal(pass,accounts);msg('Copy this text and keep it safe.')};
+$('exp').onclick=async()=>{$('bk').value=await seal(pass,accounts);msg('Backup created. Download or copy it to keep it safe.')};
+async function bkText(){if(!$('bk').value.trim().startsWith('{'))$('bk').value=await seal(pass,accounts);return $('bk').value}
+$('bkDl').onclick=async()=>{const t=await bkText();const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/plain'}));a.download='essynce-teams-authenticator-backup.txt';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1500);markBackup();msg('Backup file saved. Keep it safe.')};
+$('bkCopy').onclick=async()=>{const t=await bkText();try{await navigator.clipboard.writeText(t);markBackup();msg('Backup copied. Paste it somewhere safe.')}catch(e){msg('Copy unavailable. Select the text and copy it yourself.')}};
+$('bkNow').onclick=()=>{$('bkbox').open=true;$('exp').click();$('bkbox').scrollIntoView({behavior:'smooth'})};
 $('imp').onclick=async()=>{const p=prompt('Passphrase used for this backup:');if(!p)return;
 try{const list=await open(p,$('bk').value.trim());for(const a of list)if(!accounts.some(x=>x.secret===a.secret))accounts.push(a);await save();render();msg('Backup restored.')}
 catch(e){msg('Could not restore. Check the passphrase and text.')}};
 $('lockNow').onclick=lockNow;
-function render(){const L=$('list');if(!pass)return;L.replaceChildren();
+function render(){const L=$('list');if(!pass)return;L.replaceChildren();remind();
 if(!accounts.length){const e=document.createElement('div');e.className='card empty';e.textContent='No accounts yet. Choose Add account below.';L.append(e);return}
 accounts.forEach((a,i)=>{const d=document.createElement('div');d.className='card';
 const n=document.createElement('div');n.className='name';n.textContent=(a.issuer?a.issuer+' - ':'')+a.name;
