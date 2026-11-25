@@ -1,51 +1,63 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#edf3f9">
 <title>ISH Authenticator</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
 <style>
-body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:16px}
-main{max-width:480px;margin:auto}
-h1{font-size:22px}
-.card{background:#1e293b;border-radius:12px;padding:14px;margin:12px 0}
-input,textarea,button{font:inherit;border-radius:8px;border:1px solid #475569;padding:10px;margin:4px 0;width:100%;box-sizing:border-box;background:#0f172a;color:#e2e8f0}
-button{background:#2563eb;border:0;cursor:pointer;font-weight:600}
-button.sec{background:#334155}
-.code{font-size:32px;letter-spacing:4px;font-family:ui-monospace,monospace;cursor:pointer}
-.bar{height:4px;background:#2563eb;border-radius:2px}
-small{color:#94a3b8}
-.hide{display:none}
+:root{--ink:#2d465a;--mute:#5c7186;--line:#d1dde6;--surf:rgba(255,255,255,.72);--acc:#4d698b;--bg1:#f7f9fc;--bg2:#e3ecf5}
+@media(prefers-color-scheme:dark){:root{--ink:#e6eef6;--mute:#9fb2c4;--line:#33475a;--surf:rgba(30,45,60,.72);--acc:#7f9fc4;--bg1:#14202c;--bg2:#1b2b3a}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:var(--ink);background:linear-gradient(160deg,var(--bg1),var(--bg2));padding:max(20px,env(safe-area-inset-top)) 16px 40px}
+main{max-width:440px;margin:0 auto}
+header{display:flex;align-items:center;gap:12px;margin:8px 0 22px}
+.mark{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(140deg,#d7e4f6,#8197b4);color:#fff;font:600 17px Georgia,serif;letter-spacing:.04em}
+h1{font-size:21px;font-weight:500;letter-spacing:-.02em;margin:0}
+header small{display:block;color:var(--mute);font-size:12px}
+.card{background:var(--surf);border:1px solid var(--line);border-radius:22px;padding:18px;margin:12px 0;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 10px 40px rgba(61,96,125,.08)}
+.name{font-size:13px;color:var(--mute);overflow-wrap:anywhere}
+.code{font:500 38px ui-monospace,Consolas,monospace;letter-spacing:.08em;margin:6px 0 10px;cursor:pointer;background:none;border:0;color:var(--ink);padding:0}
+.bar{height:3px;border-radius:2px;background:var(--line);overflow:hidden}.bar i{display:block;height:100%;background:var(--acc);transition:width 1s linear}
+.row{display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:var(--mute)}
+input,textarea{width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--surf);border:1px solid var(--line);border-radius:13px;padding:12px;margin:5px 0}
+button{font:inherit;font-size:14px;min-height:44px;border-radius:13px;border:1px solid var(--line);background:var(--surf);color:var(--ink);padding:10px 16px;cursor:pointer}
+button.p{background:var(--acc);color:#fff;border-color:transparent;width:100%;margin:6px 0}
+button.l{border:0;background:none;color:var(--mute);min-height:34px;padding:4px 8px;font-size:12px}
+summary{cursor:pointer;font-size:14px;min-height:34px}
+.hide{display:none!important}.err{color:#b4443a;font-size:13px;min-height:18px}.note{color:var(--mute);font-size:12px;line-height:1.6}
+.empty{text-align:center;color:var(--mute);font-size:14px;padding:26px 8px}
 </style></head><body><main>
-<h1>ISH Authenticator</h1>
-<p><small>Your keys are encrypted with your passphrase and stored only in this browser. They are never sent anywhere. Locks after 5 minutes idle.</small></p>
+<header><div class="mark">ISH</div><div><h1>Authenticator</h1><small>Secure sign-in codes</small></div></header>
 
-<div id="lock" class="card">
-<div id="lockmsg"></div>
+<section id="lock" class="card">
+<p id="lockmsg" class="note"></p>
 <input id="pass" type="password" placeholder="Passphrase" autocomplete="off">
 <input id="pass2" type="password" placeholder="Confirm passphrase" autocomplete="off" class="hide">
-<button id="unlock">Unlock</button>
-<div id="lockerr" style="color:#f87171"></div>
-</div>
+<button id="unlock" class="p">Unlock</button>
+<div id="lockerr" class="err"></div>
+<p class="note">Your keys are encrypted with your passphrase and stay only in this browser. Nothing is sent to any server.</p>
+</section>
 
-<div id="app" class="hide">
+<section id="app" class="hide">
 <div id="list"></div>
-<div class="card"><b>Add account</b>
-<input id="uri" placeholder="Paste setup link (otpauth://...)">
-<button id="addUri">Add from setup link</button>
-<input id="mname" placeholder="Name (manual entry)">
-<input id="mkey" placeholder="Setup key (manual entry)" autocomplete="off">
-<button id="addManual" class="sec">Add with key</button></div>
-<div class="card"><b>Backup</b>
-<button id="exp" class="sec">Export encrypted backup</button>
-<textarea id="bk" rows="3" placeholder="Encrypted backup text appears here, or paste one to restore"></textarea>
-<button id="imp" class="sec">Restore from backup text</button>
-<small>Restore asks for the passphrase used when the backup was made.</small></div>
-<button id="lockNow" class="sec">Lock now</button>
-<div id="msg"></div>
-</div>
+<details class="card" id="addbox"><summary>Add account</summary>
+<input id="uri" placeholder="Paste setup link (otpauth://...)" autocomplete="off">
+<button id="addUri" class="p">Add from setup link</button>
+<input id="mname" placeholder="Name (for manual key)" autocomplete="off">
+<input id="mkey" placeholder="Setup key" autocomplete="off">
+<button id="addManual">Add with key</button></details>
+<details class="card"><summary>Backup and restore</summary>
+<button id="exp">Create encrypted backup</button>
+<textarea id="bk" rows="3" placeholder="Backup text appears here, or paste one to restore"></textarea>
+<button id="imp">Restore from backup</button>
+<p class="note">A backup is protected by the passphrase used when it was made.</p></details>
+<div class="row"><span id="msg"></span><button id="lockNow" class="l">Lock now</button></div>
+</section>
 
 <script>
-const enc=new TextEncoder(),dec=new TextDecoder();
-const KEY='ish-auth-vault-v1';
+const enc=new TextEncoder(),dec=new TextDecoder(),KEY='ish-auth-vault-v1';
 let pass=null,accounts=[],idle=null;
 const $=id=>document.getElementById(id);
 const b64=b=>btoa(String.fromCharCode(...new Uint8Array(b)));
@@ -61,52 +73,54 @@ const save=async()=>localStorage.setItem(KEY,await seal(pass,accounts));
 function b32(s){const A='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';s=s.toUpperCase().replace(/[^A-Z2-7]/g,'');let bits='',out=[];
 for(const c of s)bits+=A.indexOf(c).toString(2).padStart(5,'0');
 for(let i=0;i+8<=bits.length;i+=8)out.push(parseInt(bits.slice(i,i+8),2));return new Uint8Array(out);}
-async function totp(a,t){const step=a.period||30;let n=Math.floor(t/1000/step);const buf=new ArrayBuffer(8),dv=new DataView(buf);
+async function totp(a,t){const step=a.period||30;const n=Math.floor(t/1000/step);const buf=new ArrayBuffer(8),dv=new DataView(buf);
 dv.setUint32(0,Math.floor(n/4294967296));dv.setUint32(4,n>>>0);
 const alg=(a.algorithm||'SHA1').toUpperCase().replace('SHA','SHA-');
 const k=await crypto.subtle.importKey('raw',b32(a.secret),{name:'HMAC',hash:alg},false,['sign']);
 const h=new Uint8Array(await crypto.subtle.sign('HMAC',k,buf));const o=h[h.length-1]&15;
 const bin=((h[o]&127)<<24)|(h[o+1]<<16)|(h[o+2]<<8)|h[o+3];const d=a.digits||6;
 return String(bin%10**d).padStart(d,'0');}
-function parseUri(u){const x=new URL(u.trim());if(x.protocol!=='otpauth:'||x.hostname!=='totp')throw new Error('Not a TOTP setup link');
-const p=x.searchParams,secret=p.get('secret');if(!secret)throw new Error('No secret in link');
+function parseUri(u){const x=new URL(u.trim());if(x.protocol!=='otpauth:'||x.hostname!=='totp')throw new Error('That is not a setup link for a code app.');
+const p=x.searchParams,secret=p.get('secret');if(!secret)throw new Error('The link has no key.');
 return{name:decodeURIComponent(x.pathname.slice(1)),secret,issuer:p.get('issuer')||'',digits:+(p.get('digits')||6),period:+(p.get('period')||30),algorithm:p.get('algorithm')||'SHA1'};}
-function msg(t){$('msg').textContent=t}
+function msg(t){$('msg').textContent=t;setTimeout(()=>{if($('msg').textContent===t)$('msg').textContent=''},4000)}
 function touch(){clearTimeout(idle);idle=setTimeout(lockNow,300000)}
 ['click','keydown','touchstart'].forEach(e=>document.addEventListener(e,()=>{if(pass)touch()}));
-function lockNow(){pass=null;accounts=[];$('app').classList.add('hide');$('lock').classList.remove('hide');$('pass').value='';$('pass2').value='';$('bk').value='';init();}
+function lockNow(){pass=null;accounts=[];$('app').classList.add('hide');$('lock').classList.remove('hide');['pass','pass2','bk'].forEach(i=>$(i).value='');$('list').replaceChildren();init();}
 function init(){const has=!!localStorage.getItem(KEY);$('pass2').classList.toggle('hide',has);
-$('lockmsg').textContent=has?'Enter your passphrase to unlock.':'Empty vault. Create a passphrase. If you forget it, the vault cannot be recovered.';
+$('lockmsg').textContent=has?'Enter your passphrase to unlock.':'Create a passphrase to protect your codes. If you forget it, it cannot be recovered.';
 $('unlock').textContent=has?'Unlock':'Create vault';}
-$('unlock').onclick=async()=>{$('lockerr').textContent='';const p=$('pass').value;if(!p)return;
-const v=localStorage.getItem(KEY);
+$('unlock').onclick=async()=>{$('lockerr').textContent='';const p=$('pass').value;if(!p)return;const v=localStorage.getItem(KEY);
 try{if(v){accounts=await open(p,v)}else{if(p.length<8){$('lockerr').textContent='Use at least 8 characters.';return}
 if(p!==$('pass2').value){$('lockerr').textContent='Passphrases do not match.';return}accounts=[];}
 pass=p;if(!v)await save();$('lock').classList.add('hide');$('app').classList.remove('hide');touch();render();}
 catch(e){$('lockerr').textContent='Wrong passphrase.'}};
-async function addAcc(a){accounts.push(a);await save();render();msg('Added.')}
+['pass','pass2'].forEach(i=>$(i).addEventListener('keydown',e=>{if(e.key==='Enter')$('unlock').click()}));
+async function addAcc(a){accounts.push(a);await save();render();msg('Account added.');$('addbox').open=false}
 $('addUri').onclick=async()=>{try{await addAcc(parseUri($('uri').value));$('uri').value=''}catch(e){msg(e.message)}};
-$('addManual').onclick=async()=>{const s=$('mkey').value;if(b32(s).length<10){msg('Key looks too short.');return}
+$('addManual').onclick=async()=>{const s=$('mkey').value;if(b32(s).length<10){msg('That key looks too short.');return}
 await addAcc({name:$('mname').value||'Account',secret:s,issuer:'',digits:6,period:30,algorithm:'SHA1'});$('mkey').value='';$('mname').value='';};
 $('exp').onclick=async()=>{$('bk').value=await seal(pass,accounts);msg('Copy this text and keep it safe.')};
-$('imp').onclick=async()=>{const p=prompt('Passphrase for this backup:');if(!p)return;
-try{const list=await open(p,$('bk').value.trim());for(const a of list)if(!accounts.some(x=>x.secret===a.secret))accounts.push(a);await save();render();msg('Restored.')}
-catch(e){msg('Could not restore. Check passphrase and text.')}};
+$('imp').onclick=async()=>{const p=prompt('Passphrase used for this backup:');if(!p)return;
+try{const list=await open(p,$('bk').value.trim());for(const a of list)if(!accounts.some(x=>x.secret===a.secret))accounts.push(a);await save();render();msg('Backup restored.')}
+catch(e){msg('Could not restore. Check the passphrase and text.')}};
 $('lockNow').onclick=lockNow;
-async function render(){const L=$('list');if(!pass)return;L.innerHTML='';
-for(const [i,a] of accounts.entries()){const d=document.createElement('div');d.className='card';
-const t=document.createElement('div');t.textContent=(a.issuer?a.issuer+' - ':'')+a.name;
-const c=document.createElement('div');c.className='code';c.id='c'+i;
-const b=document.createElement('div');b.className='bar';b.id='b'+i;
-const r=document.createElement('button');r.className='sec';r.textContent='Remove';
-r.onclick=async()=>{if(confirm('Remove this account? You may lose access if you have no other way in.')){accounts.splice(i,1);await save();render()}};
-c.onclick=()=>navigator.clipboard&&navigator.clipboard.writeText(c.textContent.replace(/\s/g,''));
-d.append(t,c,b,r);L.append(d);}
-tick();}
+function render(){const L=$('list');if(!pass)return;L.replaceChildren();
+if(!accounts.length){const e=document.createElement('div');e.className='card empty';e.textContent='No accounts yet. Choose Add account below.';L.append(e);return}
+accounts.forEach((a,i)=>{const d=document.createElement('div');d.className='card';
+const n=document.createElement('div');n.className='name';n.textContent=(a.issuer?a.issuer+' - ':'')+a.name;
+const c=document.createElement('button');c.className='code';c.id='c'+i;c.title='Tap to copy';
+c.onclick=async()=>{try{await navigator.clipboard.writeText(c.textContent.replace(/\s/g,''));msg('Code copied.')}catch(e){}};
+const b=document.createElement('div');b.className='bar';const bi=document.createElement('i');bi.id='b'+i;b.append(bi);
+const r=document.createElement('div');r.className='row';const s=document.createElement('span');s.textContent='Tap code to copy';
+const x=document.createElement('button');x.className='l';x.textContent='Remove';
+x.onclick=async()=>{if(confirm('Remove this account? You could lose access if you have no other way to sign in.')){accounts.splice(i,1);await save();render()}};
+r.append(s,x);d.append(n,c,b,r);L.append(d);});tick();}
 async function tick(){if(!pass)return;const now=Date.now();
 for(const [i,a] of accounts.entries()){const c=$('c'+i),b=$('b'+i);if(!c)continue;
-try{const s=await totp(a,now);c.textContent=s.slice(0,3)+' '+s.slice(3);}catch(e){c.textContent='error'}
+try{const s=await totp(a,now);c.textContent=s.slice(0,s.length/2)+' '+s.slice(s.length/2)}catch(e){c.textContent='error'}
 const p=(a.period||30)*1000;b.style.width=(100-(now%p)/p*100)+'%';}}
 setInterval(tick,1000);
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 init();
 </script></main></body></html>
