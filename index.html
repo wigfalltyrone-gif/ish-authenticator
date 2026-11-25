@@ -30,6 +30,7 @@ summary{cursor:pointer;font-size:14px;min-height:34px}
 video{width:100%;border-radius:16px;margin:8px 0;background:#000}
 .hide{display:none!important}.err{color:#b4443a;font-size:13px;min-height:18px}.note{color:var(--mute);font-size:12px;line-height:1.6}
 .empty{text-align:center;color:var(--mute);font-size:14px;padding:26px 8px}
+.pname{font-size:17px;margin:8px 0 6px;overflow-wrap:anywhere}
 .credit{margin-top:22px;text-align:center;font-size:10px;color:var(--mute)}.credit a{color:inherit}
 </style></head><body><main>
 <header><div class="mark">E</div><div><h1>Essynce Teams Authenticator</h1><small>Secure sign-in codes for your Teams account</small></div></header>
@@ -44,6 +45,9 @@ video{width:100%;border-radius:16px;margin:8px 0;background:#000}
 </section>
 
 <section id="app" class="hide">
+<div id="pending" class="card hide"><div class="name">An account is ready to add</div><div id="pname" class="pname"></div>
+<p class="note">Only add this if you just started setup in Essynce Teams.</p>
+<button id="pyes" class="p">Add to authenticator</button><button id="pno">Not now</button></div>
 <div id="list"></div>
 <details class="card" id="addbox"><summary>Add account</summary>
 <button id="scan" class="p">Scan QR code</button>
@@ -68,7 +72,7 @@ video{width:100%;border-radius:16px;margin:8px 0;background:#000}
 
 <script>
 const enc=new TextEncoder(),dec=new TextDecoder(),KEY='ish-auth-vault-v1';
-let pass=null,accounts=[],idle=null,stream=null,scanTimer=null;
+let pass=null,accounts=[],idle=null,stream=null,scanTimer=null,pendingAcc=null;
 const $=id=>document.getElementById(id);
 const canQR='BarcodeDetector' in window;
 const b64=b=>btoa(String.fromCharCode(...new Uint8Array(b)));
@@ -94,22 +98,26 @@ return String(bin%10**d).padStart(d,'0');}
 function parseUri(u){const x=new URL(u.trim());if(x.protocol!=='otpauth:'||x.hostname!=='totp')throw new Error('That is not a setup link for a code app.');
 const p=x.searchParams,secret=p.get('secret');if(!secret)throw new Error('The link has no key.');
 return{name:decodeURIComponent(x.pathname.slice(1)),secret,issuer:p.get('issuer')||'',digits:+(p.get('digits')||6),period:+(p.get('period')||30),algorithm:p.get('algorithm')||'SHA1'};}
+(function(){const h=location.hash.slice(1);if(h.indexOf('add=')===0){try{pendingAcc=parseUri(decodeURIComponent(h.slice(4)))}catch(e){pendingAcc=null}history.replaceState(null,'',location.pathname+location.search)}})();
+function showPending(){const b=$('pending');if(pendingAcc&&pass){$('pname').textContent=(pendingAcc.issuer?pendingAcc.issuer+' - ':'')+pendingAcc.name;b.classList.remove('hide')}else b.classList.add('hide')}
 function msg(t){$('msg').textContent=t;setTimeout(()=>{if($('msg').textContent===t)$('msg').textContent=''},5000)}
 function touch(){clearTimeout(idle);idle=setTimeout(lockNow,300000)}
 ['click','keydown','touchstart'].forEach(e=>document.addEventListener(e,()=>{if(pass)touch()}));
 function stopScan(){clearInterval(scanTimer);if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}const v=$('cam');v.srcObject=null;v.classList.add('hide');$('stopScan').classList.add('hide')}
-function lockNow(){stopScan();pass=null;accounts=[];$('app').classList.add('hide');$('lock').classList.remove('hide');['pass','pass2','bk'].forEach(i=>$(i).value='');$('list').replaceChildren();init();}
+function lockNow(){stopScan();pendingAcc=null;pass=null;accounts=[];$('app').classList.add('hide');$('pending').classList.add('hide');$('lock').classList.remove('hide');['pass','pass2','bk'].forEach(i=>$(i).value='');$('list').replaceChildren();init();}
 function init(){const has=!!localStorage.getItem(KEY);$('pass2').classList.toggle('hide',has);
-$('lockmsg').textContent=has?'Enter your passphrase to unlock.':'Create a passphrase to protect your codes. If you forget it, it cannot be recovered.';
+$('lockmsg').textContent=(has?'Enter your passphrase to unlock.':'Create a passphrase to protect your codes. If you forget it, it cannot be recovered.')+(pendingAcc?' An account from Essynce Teams is waiting to be added.':'');
 $('unlock').textContent=has?'Unlock':'Create vault';}
 $('unlock').onclick=async()=>{$('lockerr').textContent='';const p=$('pass').value;if(!p)return;const v=localStorage.getItem(KEY);
 try{if(v){accounts=await open(p,v)}else{if(p.length<8){$('lockerr').textContent='Use at least 8 characters.';return}
 if(p!==$('pass2').value){$('lockerr').textContent='Passphrases do not match.';return}accounts=[];}
-pass=p;if(!v)await save();$('lock').classList.add('hide');$('app').classList.remove('hide');touch();render();}
+pass=p;if(!v)await save();$('lock').classList.add('hide');$('app').classList.remove('hide');touch();render();showPending();}
 catch(e){$('lockerr').textContent='Wrong passphrase.'}};
 ['pass','pass2'].forEach(i=>$(i).addEventListener('keydown',e=>{if(e.key==='Enter')$('unlock').click()}));
 async function addAcc(a){accounts.push(a);await save();render();msg('Account added.');$('addbox').open=false}
 async function fromText(t){try{await addAcc(parseUri(t))}catch(e){msg(e.message)}}
+$('pyes').onclick=async()=>{const a=pendingAcc;pendingAcc=null;showPending();if(!a)return;if(accounts.some(x=>x.secret===a.secret)){msg('Already added.');return}await addAcc(a)};
+$('pno').onclick=()=>{pendingAcc=null;showPending()};
 $('addUri').onclick=async()=>{await fromText($('uri').value);$('uri').value=''};
 $('scan').onclick=async()=>{if(!canQR){msg('This browser cannot scan QR codes. Paste the setup link or key instead.');return}
 try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});const v=$('cam');v.srcObject=stream;v.classList.remove('hide');$('stopScan').classList.remove('hide');await v.play();
