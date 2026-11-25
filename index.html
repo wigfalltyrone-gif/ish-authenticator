@@ -27,6 +27,7 @@ button{font:inherit;font-size:14px;min-height:44px;border-radius:13px;border:1px
 button.p{background:var(--acc);color:#fff;border-color:transparent;width:100%;margin:6px 0}
 button.l{border:0;background:none;color:var(--mute);min-height:34px;padding:4px 8px;font-size:12px}
 summary{cursor:pointer;font-size:14px;min-height:34px}
+video{width:100%;border-radius:16px;margin:8px 0;background:#000}
 .hide{display:none!important}.err{color:#b4443a;font-size:13px;min-height:18px}.note{color:var(--mute);font-size:12px;line-height:1.6}
 .empty{text-align:center;color:var(--mute);font-size:14px;padding:26px 8px}
 .credit{margin-top:22px;text-align:center;font-size:10px;color:var(--mute)}.credit a{color:inherit}
@@ -45,6 +46,12 @@ summary{cursor:pointer;font-size:14px;min-height:34px}
 <section id="app" class="hide">
 <div id="list"></div>
 <details class="card" id="addbox"><summary>Add account</summary>
+<button id="scan" class="p">Scan QR code</button>
+<video id="cam" class="hide" playsinline muted></video>
+<button id="stopScan" class="hide">Stop camera</button>
+<button id="pick">Choose QR image</button>
+<input id="qrfile" type="file" accept="image/*" class="hide">
+<p class="note">No QR code? Paste the setup link or enter the setup key below.</p>
 <input id="uri" placeholder="Paste setup link (otpauth://...)" autocomplete="off">
 <button id="addUri" class="p">Add from setup link</button>
 <input id="mname" placeholder="Name (for manual key)" autocomplete="off">
@@ -61,8 +68,9 @@ summary{cursor:pointer;font-size:14px;min-height:34px}
 
 <script>
 const enc=new TextEncoder(),dec=new TextDecoder(),KEY='ish-auth-vault-v1';
-let pass=null,accounts=[],idle=null;
+let pass=null,accounts=[],idle=null,stream=null,scanTimer=null;
 const $=id=>document.getElementById(id);
+const canQR='BarcodeDetector' in window;
 const b64=b=>btoa(String.fromCharCode(...new Uint8Array(b)));
 const unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
 async function deriveKey(p,salt){const m=await crypto.subtle.importKey('raw',enc.encode(p),'PBKDF2',false,['deriveKey']);
@@ -86,10 +94,11 @@ return String(bin%10**d).padStart(d,'0');}
 function parseUri(u){const x=new URL(u.trim());if(x.protocol!=='otpauth:'||x.hostname!=='totp')throw new Error('That is not a setup link for a code app.');
 const p=x.searchParams,secret=p.get('secret');if(!secret)throw new Error('The link has no key.');
 return{name:decodeURIComponent(x.pathname.slice(1)),secret,issuer:p.get('issuer')||'',digits:+(p.get('digits')||6),period:+(p.get('period')||30),algorithm:p.get('algorithm')||'SHA1'};}
-function msg(t){$('msg').textContent=t;setTimeout(()=>{if($('msg').textContent===t)$('msg').textContent=''},4000)}
+function msg(t){$('msg').textContent=t;setTimeout(()=>{if($('msg').textContent===t)$('msg').textContent=''},5000)}
 function touch(){clearTimeout(idle);idle=setTimeout(lockNow,300000)}
 ['click','keydown','touchstart'].forEach(e=>document.addEventListener(e,()=>{if(pass)touch()}));
-function lockNow(){pass=null;accounts=[];$('app').classList.add('hide');$('lock').classList.remove('hide');['pass','pass2','bk'].forEach(i=>$(i).value='');$('list').replaceChildren();init();}
+function stopScan(){clearInterval(scanTimer);if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}const v=$('cam');v.srcObject=null;v.classList.add('hide');$('stopScan').classList.add('hide')}
+function lockNow(){stopScan();pass=null;accounts=[];$('app').classList.add('hide');$('lock').classList.remove('hide');['pass','pass2','bk'].forEach(i=>$(i).value='');$('list').replaceChildren();init();}
 function init(){const has=!!localStorage.getItem(KEY);$('pass2').classList.toggle('hide',has);
 $('lockmsg').textContent=has?'Enter your passphrase to unlock.':'Create a passphrase to protect your codes. If you forget it, it cannot be recovered.';
 $('unlock').textContent=has?'Unlock':'Create vault';}
@@ -100,7 +109,18 @@ pass=p;if(!v)await save();$('lock').classList.add('hide');$('app').classList.rem
 catch(e){$('lockerr').textContent='Wrong passphrase.'}};
 ['pass','pass2'].forEach(i=>$(i).addEventListener('keydown',e=>{if(e.key==='Enter')$('unlock').click()}));
 async function addAcc(a){accounts.push(a);await save();render();msg('Account added.');$('addbox').open=false}
-$('addUri').onclick=async()=>{try{await addAcc(parseUri($('uri').value));$('uri').value=''}catch(e){msg(e.message)}};
+async function fromText(t){try{await addAcc(parseUri(t))}catch(e){msg(e.message)}}
+$('addUri').onclick=async()=>{await fromText($('uri').value);$('uri').value=''};
+$('scan').onclick=async()=>{if(!canQR){msg('This browser cannot scan QR codes. Paste the setup link or key instead.');return}
+try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});const v=$('cam');v.srcObject=stream;v.classList.remove('hide');$('stopScan').classList.remove('hide');await v.play();
+const det=new BarcodeDetector({formats:['qr_code']});let busy=false;
+scanTimer=setInterval(async()=>{if(busy)return;busy=true;try{const r=await det.detect(v);if(r.length&&r[0].rawValue.startsWith('otpauth://')){const t=r[0].rawValue;stopScan();await fromText(t)}}catch(e){}busy=false},400)}
+catch(e){stopScan();msg('Camera unavailable. Allow camera access, or paste the setup link.')}};
+$('stopScan').onclick=stopScan;
+$('pick').onclick=()=>{if(!canQR){msg('This browser cannot read QR images. Paste the setup link or key instead.');return}$('qrfile').click()};
+$('qrfile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
+try{const bmp=await createImageBitmap(f);const r=await new BarcodeDetector({formats:['qr_code']}).detect(bmp);if(!r.length){msg('No QR code found in that image.');return}await fromText(r[0].rawValue)}
+catch(err){msg('Could not read that image.')}};
 $('addManual').onclick=async()=>{const s=$('mkey').value;if(b32(s).length<10){msg('That key looks too short.');return}
 await addAcc({name:$('mname').value||'Account',secret:s,issuer:'',digits:6,period:30,algorithm:'SHA1'});$('mkey').value='';$('mname').value='';};
 $('exp').onclick=async()=>{$('bk').value=await seal(pass,accounts);msg('Copy this text and keep it safe.')};
